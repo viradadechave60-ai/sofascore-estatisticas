@@ -110,7 +110,7 @@ prob=poisson_over(lam,line); implied=1/odd; edge=prob-implied
 hit5=sum(x['shots']>line for x in hist[:5])/min(5,len(hist))
 hit10=sum(x['shots']>line for x in hist[:10])/len(hist)
 starter_rate=sum(x['starter'] for x in hist)/len(hist)
-score=max(0,min(100, .30hit5100+.20hit10100+.20min(1,exp_minutes/90)100+.15starter_rate100+.15*min(1,season90/3)*100))
+score=max(0,min(100, .30*hit5*100+.20*hit10*100+.20*min(1,exp_minutes/90)*100+.15*starter_rate*100+.15*min(1,season90/3)*100))
 if prob>=.75 and edge>=.06 and score>=75: signal='APROVAR'
 elif prob>=.68 and edge>=.03 and score>=65: signal='INTERESSANTE'
 else: signal='EVITAR'
