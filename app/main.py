@@ -89,7 +89,7 @@ s90=[(x['shots']90/x['minutes']) for x in hist if x['minutes']>=15]
 season90=statistics.mean(s90) if s90 else statistics.mean(vals)
 last5=statistics.mean(vals[:5]); last10=statistics.mean(vals[:10])
 # Weighted baseline; shrink small samples toward season proxy.
-base=.40season90+.35last5+.25last10
+base=.40*season90+.35*last5+.25*last10
 exp_minutes=statistics.mean(mins[:5])
 # Conservative minutes expectation capped at 90.
 exp_minutes=max(45,min(90,exp_minutes))
