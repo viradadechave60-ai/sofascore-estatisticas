@@ -35,10 +35,10 @@ def get_json(path, ttl=120):
         r = sess.get(BASE + path, timeout=12)
 
         if r.status_code in (403, 429):
-    raise HTTPException(
-        503,
-        f'Sofascore respondeu HTTP {r.status_code}.'
-    )
+            raise HTTPException(
+                503,
+                f'Sofascore respondeu HTTP {r.status_code}.'
+            )
 
         r.raise_for_status()
         data = r.json()
