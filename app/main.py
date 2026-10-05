@@ -16,6 +16,16 @@ HEADERS = {
 }
 
 app = FastAPI(title='Analisador de Chutes - Sofascore')
+
+
+
+app = FastAPI(title='Analisador de Chutes - Sofascore')
+
+
+
+@app.get('/api/teste')
+def teste():
+    return {'status': 'ok', 'mensagem': 'Servidor funcionando'}
 app.mount('/static', StaticFiles(directory='app/static'), name='static')
 
 sess = requests.Session()
