@@ -7,7 +7,13 @@ import time
 import statistics
 
 BASE = 'https://www.sofascore.com/api/v1'
-HEADERS = {'User-Agent': 'Mozilla/5.0 (compatible; ChutesAnalyzer/1.0)'}
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Referer': 'https://www.sofascore.com/',
+    'Origin': 'https://www.sofascore.com'
+}
 
 app = FastAPI(title='Analisador de Chutes - Sofascore')
 app.mount('/static', StaticFiles(directory='app/static'), name='static')
