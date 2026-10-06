@@ -1005,15 +1005,18 @@ def analyze(
     # SCORE
     # --------------------------------------------------------
 
-        score = round(
+    score = round(
         min(
             100,
-            0.30 * min(1, season90 / 3) * 100
+            0.30 * min(1, season90 / 3) * 
+100
             + 0.20 * hit5 * 100
             + 0.20 * hit10 * 100
-            + 0.20 * min(1, exp_minutes / 90) * 100
+            + 0.20 * min(1, exp_minutes / 
+90) * 100
             + 0.15 * starter_rate * 100
-            + 0.15 * min(1, season90 / 3) * 100
+            + 0.15 * min(1, season90 / 3) * 
+100
         )
     )
 
@@ -1038,10 +1041,12 @@ def analyze(
         "player": {
             "id": player_id,
             "name": p.get("name"),
-            "firstname": p.get("firstname"),
+            "firstname": 
+p.get("firstname"),
             "lastname": p.get("lastname"),
             "age": p.get("age"),
-            "nationality": p.get("nationality"),
+            "nationality": 
+p.get("nationality"),
             "photo": p.get("photo")
         },
 
@@ -1072,12 +1077,16 @@ def analyze(
         "signal": signal,
 
         "method": (
-            "API-Football; jogador localizado "
+            "API-Football; jogador 
+localizado "
             "nas temporadas disponíveis; "
             "clube via players/squads; "
-            "histórico recente via fixtures + "
-            "fixtures/players; chutes por 90; "
-            "minutos esperados; fator casa/fora; "
+            "histórico recente via fixtures 
++ "
+            "fixtures/players; chutes por 
+90; "
+            "minutos esperados; fator casa/
+fora; "
             "distribuição de Poisson."
         )
     }
