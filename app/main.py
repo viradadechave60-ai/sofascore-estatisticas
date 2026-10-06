@@ -993,12 +993,47 @@ def analyze(
     # RESULTADO
     # --------------------------------------------------------
 
-    return {
-
+        return {
         "player": {
             "id": p.get("id"),
             "name": p.get("name"),
-            "firstname": p.get(
-                "firstname"
-            ),
-            "lastname": p.g
+            "firstname": p.get("firstname"),
+            "lastname": p.get("lastname"),
+            "age": p.get("age"),
+            "nationality": p.get("nationality"),
+            "photo": p.get("photo")
+        },
+
+        "team": team,
+
+        "fixture": fixture,
+
+        "sample": hist,
+
+        "seasonShots90": season90,
+
+        "last5": last5,
+
+        "last10": last10,
+
+        "expectedMinutes": exp_minutes,
+
+        "expectedShots": lam,
+
+        "probability": prob,
+
+        "impliedProbability": implied,
+
+        "edge": edge,
+
+        "score": score,
+
+        "signal": signal,
+
+        "method": (
+            "API-Football; histórico recente + "
+            "chutes por 90 + minutos esperados + "
+            "fator casa/fora + distribuição de Poisson. "
+            "O score é um indicador de contexto e não uma probabilidade."
+        )
+    }
