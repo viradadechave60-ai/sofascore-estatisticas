@@ -1,32 +1,54 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
 import requests
 import math
 import time
 import statistics
+import os
+from datetime import datetime
 
-BASE = 'https://www.sofascore.com/api/v1'
+
+# ============================================================
+# CONFIGURAÇÃO
+# ============================================================
+
+API_KEY = os.getenv("API_FOOTBALL_KEY")
+
+BASE = "https://v3.football.api-sports.io"
+
+SEASON = int(
+    os.getenv(
+        "API_FOOTBALL_SEASON",
+        str(datetime.now().year)
+    )
+)
+
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36',
-    'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-    'Referer': 'https://www.sofascore.com/',
-    'Origin': 'https://www.sofascore.com'
+    "x-apisports-key": API_KEY or "",
+    "Accept": "application/json"
 }
 
-app = FastAPI(title='Analisador de Chutes - Sofascore')
+app = FastAPI(
+    title="Analisador de Chutes - API-Football"
+)
 
 
+# ============================================================
+# ARQUIVOS ESTÁTICOS
+# ============================================================
 
-app = FastAPI(title='Analisador de Chutes - Sofascore')
+app.mount(
+    "/static",
+    StaticFiles(directory="app/static"),
+    name="static"
+)
 
 
-
-@app.get('/api/teste')
-def teste():
-    return {'status': 'ok', 'mensagem': 'Servidor funcionando'}
-app.mount('/static', StaticFiles(directory='app/static'), name='static')
+# ============================================================
+# SESSÃO / CACHE
+# ============================================================
 
 sess = requests.Session()
 sess.headers.update(HEADERS)
@@ -34,220 +56,726 @@ sess.headers.update(HEADERS)
 _cache = {}
 
 
-def get_json(path, ttl=120):
+# ============================================================
+# REQUISIÇÃO À API-FOOTBALL
+# ============================================================
+
+def get_json(endpoint, params=None, ttl=120):
+
+    if not API_KEY:
+        raise HTTPException(
+            500,
+            "API_FOOTBALL_KEY não configurada no Render."
+        )
+
+    params = params or {}
+
+    cache_key = (
+        endpoint,
+        tuple(sorted(params.items()))
+    )
+
     now = time.time()
-    hit = _cache.get(path)
+
+    hit = _cache.get(cache_key)
 
     if hit and now - hit[0] < ttl:
         return hit[1]
 
     try:
-        r = sess.get(BASE + path, timeout=12)
 
-        if r.status_code in (403, 429):
+        r = sess.get(
+            BASE + endpoint,
+            params=params,
+            timeout=15
+        )
+
+        if r.status_code == 429:
             raise HTTPException(
                 503,
-                f'Sofascore respondeu HTTP {r.status_code}.'
+                "Limite de requisições da API-Football atingido. "
+                "Tente novamente mais tarde."
+            )
+
+        if r.status_code in (401, 403):
+            raise HTTPException(
+                502,
+                "A chave da API-Football foi recusada. "
+                "Verifique API_FOOTBALL_KEY no Render."
             )
 
         r.raise_for_status()
+
         data = r.json()
-        _cache[path] = (now, data)
+
+        errors = data.get("errors")
+
+        if errors:
+
+            if isinstance(errors, dict):
+                mensagem = "; ".join(
+                    f"{k}: {v}"
+                    for k, v in errors.items()
+                )
+            else:
+                mensagem = str(errors)
+
+            raise HTTPException(
+                502,
+                f"API-Football: {mensagem}"
+            )
+
+        _cache[cache_key] = (
+            now,
+            data
+        )
+
         return data
 
+    except HTTPException:
+        raise
+
     except requests.RequestException as e:
+
         raise HTTPException(
             502,
-            f'Falha ao consultar Sofascore: {e}'
+            f"Falha ao consultar API-Football: {e}"
         )
 
+
+# ============================================================
+# POISSON
+# ============================================================
 
 def poisson_over(lam, line):
+
     k = math.floor(float(line)) + 1
+
     cdf = sum(
-        math.exp(-lam) * lam ** i / math.factorial(i)
+        math.exp(-lam)
+        * lam ** i
+        / math.factorial(i)
         for i in range(k)
     )
-    return max(0, min(1, 1 - cdf))
 
-
-def find_player(name):
-    d = get_json(
-        '/search/all?q=' + requests.utils.quote(name),
-        300
+    return max(
+        0,
+        min(
+            1,
+            1 - cdf
+        )
     )
 
-    arr = d.get('results', [])
-    players = [
-        x for x in arr
-        if x.get('entity', {}).get('type') == 'player'
-    ]
+
+# ============================================================
+# NORMALIZAÇÃO DE TEXTO
+# ============================================================
+
+def normalize_name(name):
+
+    return (
+        str(name)
+        .strip()
+        .lower()
+        .replace(".", "")
+    )
+
+
+# ============================================================
+# BUSCAR JOGADOR
+# ============================================================
+
+def find_player(name):
+
+    if not name or len(name.strip()) < 3:
+        raise HTTPException(
+            400,
+            "Digite pelo menos 3 caracteres do nome do jogador."
+        )
+
+    search_name = name.strip()
+
+    data = get_json(
+        "/players",
+        {
+            "search": search_name,
+            "season": SEASON
+        },
+        600
+    )
+
+    players = data.get("response", [])
+
+    # Caso a busca com temporada não encontre nada,
+    # tenta novamente sem temporada.
+    if not players:
+
+        data = get_json(
+            "/players",
+            {
+                "search": search_name
+            },
+            600
+        )
+
+        players = data.get("response", [])
 
     if not players:
+
         raise HTTPException(
             404,
-            'Jogador não encontrado no Sofascore.'
+            "Jogador não encontrado na API-Football."
         )
 
-    return players[0]['entity']
+    wanted = normalize_name(search_name)
 
+    # Primeiro tenta encontrar nome exatamente igual
+    exact = []
 
-def next_events(team_id):
-    out = []
+    for item in players:
 
-    for page in range(0, 2):
-        d = get_json(
-            f'/team/{team_id}/events/next/{page}',
-            180
+        player = item.get("player") or {}
+
+        player_name = normalize_name(
+            player.get("name", "")
         )
 
-        out += d.get('events', [])
+        if player_name == wanted:
+            exact.append(item)
 
-        if not d.get('hasNextPage'):
-            break
+    if exact:
+        return exact[0]
 
-    return out
+    # Caso contrário, retorna o primeiro resultado
+    return players[0]
 
 
-def last_events(team_id, pages=2):
-    out = []
+# ============================================================
+# ESTATÍSTICAS DO JOGADOR NA TEMPORADA
+# ============================================================
 
-    for page in range(pages):
-        d = get_json(
-            f'/team/{team_id}/events/last/{page}',
+def player_statistics(player_id):
+
+    all_stats = []
+
+    page = 1
+
+    while page <= 3:
+
+        data = get_json(
+            "/players",
+            {
+                "id": player_id,
+                "season": SEASON,
+                "page": page
+            },
             300
         )
 
-        out += [
-            e for e in d.get('events', [])
-            if e.get('status', {}).get('type') == 'finished'
-        ]
+        response = data.get("response", [])
 
-        if not d.get('hasNextPage'):
+        for item in response:
+
+            statistics_list = (
+                item.get("statistics")
+                or []
+            )
+
+            all_stats.extend(
+                statistics_list
+            )
+
+        paging = data.get("paging") or {}
+
+        total_pages = paging.get(
+            "total",
+            1
+        )
+
+        if page >= total_pages:
             break
 
-    return out
+        page += 1
+
+    return all_stats
 
 
-def player_history(player_id, team_id, n=10):
-    events = last_events(team_id, 4)
+# ============================================================
+# ÚLTIMOS JOGOS DO JOGADOR
+# ============================================================
+
+def player_history(player_id, team_id=None, n=10):
+
+    stats = player_statistics(
+        player_id
+    )
+
     rows = []
 
-    for e in events[:25]:
-        try:
-            l = get_json(
-                f"/event/{e['id']}/lineups",
-                600
-            )
-        except HTTPException:
+    for item in stats:
+
+        fixture = item.get("fixture") or {}
+        games = item.get("games") or {}
+        shots_data = item.get("shots") or {}
+
+        fixture_id = fixture.get("id")
+
+        if not fixture_id:
             continue
 
-        found = None
+        minutes = games.get("minutes")
 
-        for side in ('home', 'away'):
-            for p in l.get(side, {}).get('players', []):
-                if p.get('player', {}).get('id') == player_id:
-                    found = p
-                    break
+        if minutes is None:
+            minutes = 0
 
-            if found:
-                break
+        shots = shots_data.get("total")
 
-        if found:
-            st = found.get('statistics') or {}
+        if shots is None:
+            shots = 0
 
-            minutes = st.get('minutesPlayed') or 0
-            shots = st.get('totalShots')
+        substitute = games.get(
+            "substitute",
+            False
+        )
 
-            if shots is None:
-                shots = st.get('shots', 0)
+        team = item.get("team") or {}
 
-            rows.append({
-                'eventId': e['id'],
-                'date': e.get('startTimestamp'),
-                'minutes': minutes or 0,
-                'shots': shots or 0,
-                'starter': bool(found.get('starter')),
-                'home': e.get('homeTeam', {}).get('id') == team_id,
-                'opponent':
-                    e.get('awayTeam', {}).get('name')
-                    if e.get('homeTeam', {}).get('id') == team_id
-                    else e.get('homeTeam', {}).get('name')
-            })
+        current_team_id = team.get("id")
 
-            if len(rows) >= n:
-                break
+        if team_id and current_team_id != team_id:
+            continue
 
-    return rows
+        rows.append({
+            "eventId": fixture_id,
+            "date": fixture.get("date"),
+            "minutes": int(minutes or 0),
+            "shots": int(shots or 0),
+            "starter": not bool(substitute),
+            "teamId": current_team_id,
+            "team": team.get("name"),
+            "opponent": None,
+            "home": None
+        })
+
+    # Ordenar do mais recente para o mais antigo
+    rows.sort(
+        key=lambda x: x.get("date") or "",
+        reverse=True
+    )
+
+    # Remover partidas sem participação
+    rows = [
+        x for x in rows
+        if x["minutes"] > 0
+    ]
+
+    return rows[:n]
 
 
-@app.get('/')
+# ============================================================
+# DESCOBRIR ADVERSÁRIO / MANDO
+# ============================================================
+
+def enrich_fixture_data(rows, team_id):
+
+    result = []
+
+    for row in rows:
+
+        fixture_id = row["eventId"]
+
+        try:
+
+            data = get_json(
+                "/fixtures",
+                {
+                    "id": fixture_id
+                },
+                1800
+            )
+
+            fixtures = data.get(
+                "response",
+                []
+            )
+
+            if not fixtures:
+                result.append(row)
+                continue
+
+            fixture = fixtures[0]
+
+            teams = fixture.get(
+                "teams"
+            ) or {}
+
+            home = teams.get(
+                "home"
+            ) or {}
+
+            away = teams.get(
+                "away"
+            ) or {}
+
+            home_id = home.get("id")
+
+            away_id = away.get("id")
+
+            if home_id == team_id:
+
+                row["home"] = True
+                row["opponent"] = away.get(
+                    "name"
+                )
+
+            elif away_id == team_id:
+
+                row["home"] = False
+                row["opponent"] = home.get(
+                    "name"
+                )
+
+            result.append(row)
+
+        except HTTPException:
+
+            result.append(row)
+
+    return result
+
+
+# ============================================================
+# PRÓXIMA PARTIDA
+# ============================================================
+
+def next_fixture(team_id):
+
+    data = get_json(
+        "/fixtures",
+        {
+            "team": team_id,
+            "next": 5
+        },
+        180
+    )
+
+    fixtures = data.get(
+        "response",
+        []
+    )
+
+    if not fixtures:
+        return None
+
+    now = int(time.time())
+
+    upcoming = []
+
+    for fixture in fixtures:
+
+        timestamp = (
+            fixture
+            .get("fixture", {})
+            .get("timestamp")
+        )
+
+        if timestamp and timestamp > now:
+
+            upcoming.append(
+                fixture
+            )
+
+    if not upcoming:
+        return None
+
+    fixture = upcoming[0]
+
+    fixture_info = fixture.get(
+        "fixture"
+    ) or {}
+
+    teams = fixture.get(
+        "teams"
+    ) or {}
+
+    league = fixture.get(
+        "league"
+    ) or {}
+
+    return {
+        "id": fixture_info.get("id"),
+        "date": fixture_info.get("date"),
+        "timestamp": fixture_info.get(
+            "timestamp"
+        ),
+        "status": (
+            fixture_info
+            .get("status", {})
+            .get("short")
+        ),
+        "homeTeam": (
+            teams
+            .get("home", {})
+            .get("name")
+        ),
+        "awayTeam": (
+            teams
+            .get("away", {})
+            .get("name")
+        ),
+        "league": league.get(
+            "name"
+        ),
+        "venue": (
+            fixture_info
+            .get("venue", {})
+            .get("name")
+        )
+    }
+
+
+# ============================================================
+# ENDPOINT TESTE
+# ============================================================
+
+@app.get("/api/teste")
+def teste():
+
+    return {
+        "status": "ok",
+        "mensagem": "Servidor funcionando",
+        "fonte": "API-Football",
+        "season": SEASON
+    }
+
+
+# ============================================================
+# PÁGINA PRINCIPAL
+# ============================================================
+
+@app.get("/")
 def root():
-    return FileResponse('app/static/index.html')
+
+    return FileResponse(
+        "app/static/index.html"
+    )
 
 
-@app.get('/api/player')
+# ============================================================
+# ENDPOINT PLAYER
+# ============================================================
+
+@app.get("/api/player")
 def player(name: str):
-    p = find_player(name)
-    return p
+
+    item = find_player(name)
+
+    p = item.get(
+        "player"
+    ) or {}
+
+    statistics_list = (
+        item.get("statistics")
+        or []
+    )
+
+    team = {}
+
+    if statistics_list:
+
+        team = (
+            statistics_list[0]
+            .get("team")
+            or {}
+        )
+
+    return {
+        "id": p.get("id"),
+        "name": p.get("name"),
+        "firstname": p.get("firstname"),
+        "lastname": p.get("lastname"),
+        "age": p.get("age"),
+        "nationality": p.get(
+            "nationality"
+        ),
+        "photo": p.get("photo"),
+        "team": team
+    }
 
 
-@app.get('/api/analyze')
-def analyze(name: str, line: float, odd: float):
+# ============================================================
+# ANÁLISE
+# ============================================================
 
-    if odd <= 1 or line < 0:
+@app.get("/api/analyze")
+def analyze(
+    name: str,
+    line: float,
+    odd: float
+):
+
+    if odd <= 1:
+
         raise HTTPException(
             400,
-            'Linha/odd inválidas.'
+            "Odd inválida."
         )
 
-    p = find_player(name)
+    if line < 0:
 
-    team = p.get('team') or {}
-    team_id = team.get('id')
+        raise HTTPException(
+            400,
+            "Linha inválida."
+        )
 
-    if not team_id:
+    # --------------------------------------------------------
+    # JOGADOR
+    # --------------------------------------------------------
+
+    item = find_player(name)
+
+    p = item.get(
+        "player"
+    ) or {}
+
+    player_id = p.get("id")
+
+    if not player_id:
+
         raise HTTPException(
             404,
-            'Sofascore não retornou o clube atual do jogador.'
+            "ID do jogador não encontrado."
         )
 
+    # --------------------------------------------------------
+    # TIME
+    # --------------------------------------------------------
+
+    statistics_list = (
+        item.get("statistics")
+        or []
+    )
+
+    team = {}
+
+    for stat in statistics_list:
+
+        possible_team = (
+            stat.get("team")
+            or {}
+        )
+
+        if possible_team.get("id"):
+
+            team = possible_team
+
+            break
+
+    team_id = team.get("id")
+
+    if not team_id:
+
+        # Tenta obter estatísticas novamente
+        # para descobrir o clube.
+        all_stats = player_statistics(
+            player_id
+        )
+
+        if all_stats:
+
+            team = (
+                all_stats[0]
+                .get("team")
+                or {}
+            )
+
+            team_id = team.get("id")
+
+    if not team_id:
+
+        raise HTTPException(
+            404,
+            "Não foi possível identificar o clube atual do jogador."
+        )
+
+    # --------------------------------------------------------
+    # HISTÓRICO
+    # --------------------------------------------------------
+
     hist = player_history(
-        p['id'],
+        player_id,
         team_id,
         10
     )
 
     if len(hist) < 5:
+
         raise HTTPException(
             422,
-            'Não há jogos recentes suficientes no Sofascore para uma análise confiável.'
+            "Não há pelo menos 5 jogos recentes "
+            "com minutos jogados para uma análise."
         )
 
+    # --------------------------------------------------------
+    # COMPLETAR ADVERSÁRIOS
+    # --------------------------------------------------------
+
+    hist = enrich_fixture_data(
+        hist,
+        team_id
+    )
+
+    # --------------------------------------------------------
+    # VALORES
+    # --------------------------------------------------------
+
     vals = [
-        x['shots']
+        x["shots"]
         for x in hist
     ]
 
     mins = [
-        x['minutes']
+        x["minutes"]
         for x in hist
     ]
+
+    # --------------------------------------------------------
+    # CHUTES POR 90 MINUTOS
+    # --------------------------------------------------------
 
     s90 = [
-        x['shots'] * 90 / x['minutes']
+        x["shots"] * 90 / x["minutes"]
         for x in hist
-        if x['minutes'] >= 15
+        if x["minutes"] >= 15
     ]
 
-    season90 = (
-        statistics.mean(s90)
-        if s90
-        else statistics.mean(vals)
+    if s90:
+
+        season90 = statistics.mean(
+            s90
+        )
+
+    else:
+
+        season90 = statistics.mean(
+            vals
+        )
+
+    # --------------------------------------------------------
+    # MÉDIAS
+    # --------------------------------------------------------
+
+    last5 = statistics.mean(
+        vals[:5]
     )
 
-    last5 = statistics.mean(vals[:5])
-    last10 = statistics.mean(vals[:10])
+    last10 = statistics.mean(
+        vals[:10]
+    )
+
+    # --------------------------------------------------------
+    # BASE PONDERADA
+    # --------------------------------------------------------
 
     base = (
         0.40 * season90
@@ -255,117 +783,222 @@ def analyze(name: str, line: float, odd: float):
         + 0.25 * last10
     )
 
-    exp_minutes = statistics.mean(mins[:5])
+    # --------------------------------------------------------
+    # MINUTOS ESPERADOS
+    # --------------------------------------------------------
+
+    exp_minutes = statistics.mean(
+        mins[:5]
+    )
 
     exp_minutes = max(
         45,
-        min(90, exp_minutes)
+        min(
+            90,
+            exp_minutes
+        )
     )
 
-    lam = base * exp_minutes / 90
+    # --------------------------------------------------------
+    # CHUTES ESPERADOS
+    # --------------------------------------------------------
 
-    current_events = next_events(team_id)
+    lam = (
+        base
+        * exp_minutes
+        / 90
+    )
 
-    upcoming = [
-        e for e in current_events
-        if e.get('status', {}).get('type') == 'notstarted'
-    ]
+    # --------------------------------------------------------
+    # PRÓXIMO JOGO
+    # --------------------------------------------------------
 
-    fixture = upcoming[0] if upcoming else None
+    fixture = next_fixture(
+        team_id
+    )
 
     venue = None
 
     if fixture:
-        venue = (
-            'home'
-            if fixture.get('homeTeam', {}).get('id') == team_id
-            else 'away'
+
+        if fixture["homeTeam"] == team.get(
+            "name"
+        ):
+
+            venue = "home"
+
+        elif fixture["awayTeam"] == team.get(
+            "name"
+        ):
+
+            venue = "away"
+
+    # --------------------------------------------------------
+    # FATOR CASA/FORA
+    # --------------------------------------------------------
+
+    split = []
+
+    if venue:
+
+        expected_home = (
+            venue == "home"
         )
 
-    split = [
-        x['shots']
-        for x in hist
-        if x['home'] == (venue == 'home')
-    ] if venue else []
+        split = [
+            x["shots"]
+            for x in hist
+            if x["home"] is not None
+            and x["home"] == expected_home
+        ]
 
     if len(split) >= 3:
-        overall = statistics.mean(vals) or 1
+
+        overall = (
+            statistics.mean(vals)
+            or 1
+        )
 
         split_factor = max(
             0.85,
             min(
                 1.15,
-                statistics.mean(split) / overall
+                statistics.mean(split)
+                / overall
             )
         )
 
         lam *= split_factor
+
+    # --------------------------------------------------------
+    # PROBABILIDADE
+    # --------------------------------------------------------
 
     prob = poisson_over(
         lam,
         line
     )
 
+    # --------------------------------------------------------
+    # PROBABILIDADE IMPLÍCITA
+    # --------------------------------------------------------
+
     implied = 1 / odd
-    edge = prob - implied
+
+    # --------------------------------------------------------
+    # EDGE
+    # --------------------------------------------------------
+
+    edge = (
+        prob
+        - implied
+    )
+
+    # --------------------------------------------------------
+    # TAXA DE ACERTO
+    # --------------------------------------------------------
 
     hit5 = (
         sum(
-            x['shots'] > line
+            x["shots"] > line
             for x in hist[:5]
         )
-        / min(5, len(hist))
+        / min(
+            5,
+            len(hist)
+        )
     )
 
     hit10 = (
         sum(
-            x['shots'] > line
+            x["shots"] > line
             for x in hist[:10]
         )
         / len(hist)
     )
 
+    # --------------------------------------------------------
+    # TAXA DE TITULARIDADE
+    # --------------------------------------------------------
+
     starter_rate = (
         sum(
-            x['starter']
+            x["starter"]
             for x in hist
         )
         / len(hist)
     )
 
+    # --------------------------------------------------------
+    # SCORE
+    # --------------------------------------------------------
+
     score = max(
         0,
         min(
             100,
-            0.30 * hit5 * 100
-            + 0.20 * hit10 * 100
-            + 0.20 * min(1, exp_minutes / 90) * 100
-            + 0.15 * starter_rate * 100
-            + 0.15 * min(1, season90 / 3) * 100
+            0.30
+            * hit5
+            * 100
+
+            + 0.20
+            * hit10
+            * 100
+
+            + 0.20
+            * min(
+                1,
+                exp_minutes / 90
+            )
+            * 100
+
+            + 0.15
+            * starter_rate
+            * 100
+
+            + 0.15
+            * min(
+                1,
+                season90 / 3
+            )
+            * 100
         )
     )
 
-    if prob >= 0.75 and edge >= 0.06 and score >= 75:
-        signal = 'APROVAR'
-    elif prob >= 0.68 and edge >= 0.03 and score >= 65:
-        signal = 'INTERESSANTE'
+    # --------------------------------------------------------
+    # SINAL
+    # --------------------------------------------------------
+
+    if (
+        prob >= 0.75
+        and edge >= 0.06
+        and score >= 75
+    ):
+
+        signal = "APROVAR"
+
+    elif (
+        prob >= 0.68
+        and edge >= 0.03
+        and score >= 65
+    ):
+
+        signal = "INTERESSANTE"
+
     else:
-        signal = 'EVITAR'
+
+        signal = "EVITAR"
+
+    # --------------------------------------------------------
+    # RESULTADO
+    # --------------------------------------------------------
 
     return {
-        'player': p,
-        'team': team,
-        'fixture': fixture,
-        'sample': hist,
-        'seasonShots90': season90,
-        'last5': last5,
-        'last10': last10,
-        'expectedMinutes': exp_minutes,
-        'expectedShots': lam,
-        'probability': prob,
-        'impliedProbability': implied,
-        'edge': edge,
-        'score': score,
-        'signal': signal,
-        'method': 'Sofascore-only; weighted history + Poisson; context score is not a probability.'
-    }
+
+        "player": {
+            "id": p.get("id"),
+            "name": p.get("name"),
+            "firstname": p.get(
+                "firstname"
+            ),
+            "lastname": p.g
