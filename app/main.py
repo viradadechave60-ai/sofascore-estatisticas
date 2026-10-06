@@ -196,29 +196,16 @@ def find_player(name):
     search_name = name.strip()
 
     data = get_json(
-        "/players",
-        {
-            "search": search_name,
-            "season": SEASON
-        },
-        600
-    )
+    "/players",
+    {
+        "search": search_name
+    },
+    600
+)
 
     players = data.get("response", [])
 
-    # Caso a busca com temporada não encontre nada,
-    # tenta novamente sem temporada.
-    if not players:
-
-        data = get_json(
-            "/players",
-            {
-                "search": search_name
-            },
-            600
-        )
-
-        players = data.get("response", [])
+   
 
     if not players:
 
