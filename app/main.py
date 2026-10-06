@@ -1001,22 +1001,19 @@ def analyze(
         / len(hist)
     )
 
-    # --------------------------------------------------------
+      # --------------------------------------------------------
     # SCORE
     # --------------------------------------------------------
-   
+
     score = round(
         min(
             100,
-            0.30 * min(1, season90 / 3) * 
-100
+            0.30 * min(1, season90 / 3) * 100
             + 0.20 * hit5 * 100
             + 0.20 * hit10 * 100
-            + 0.20 * min(1, exp_minutes / 
-90) * 100
+            + 0.20 * min(1, exp_minutes / 90) * 100
             + 0.15 * starter_rate * 100
-            + 0.15 * min(1, season90 / 3) * 
-100
+            + 0.15 * min(1, season90 / 3) * 100
         )
     )
 
@@ -1041,8 +1038,8 @@ def analyze(
         "player": {
             "id": player_id,
             "name": p.get("name"),
-            "firstname": 
-p.get("firstname"),
+            "firstname": p.get("firstname"),
+            "lastname": p.get("lastname"),
             "lastname": p.get("lastname"),
             "age": p.get("age"),
             "nationality": 
