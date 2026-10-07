@@ -182,7 +182,6 @@ def normalize_name(name):
 def find_player(name):
 
     if not name or len(name.strip()) < 3:
-
         raise HTTPException(
             400,
             "Digite pelo menos 3 caracteres."
@@ -190,73 +189,106 @@ def find_player(name):
 
     search_name = name.strip()
 
+    # Principais ligas disponíveis no API-Football
+    # ID da liga : nome
+    SEARCH_LEAGUES = [
+        140,  # La Liga
+        39,   # Premier League
+        135,  # Serie A
+        78,   # Bundesliga
+        61,   # Ligue 1
+        71,   # Brasileirão
+        94,   # Primeira Liga
+        88,   # Eredivisie
+        203,  # Süper Lig
+        144,  # Jupiler Pro League
+        119,  # Superliga Argentina
+        253,  # MLS
+    ]
+
+    wanted = normalize_name(search_name)
+
     last_error = None
 
-    # Procuramos nas temporadas permitidas
-    # pelo plano gratuito.
+    # Primeiro procura na temporada mais recente
+    # permitida pelo plano gratuito.
     for season in SEARCH_SEASONS:
 
-        try:
+        for league_id in SEARCH_LEAGUES:
 
-            data = get_json(
-                "/players",
-                {
-                    "search": search_name,
-                    "season": season
-                },
-                3600
-            )
+            try:
 
-            players = data.get(
-                "response",
-                []
-            )
+                data = get_json(
+                    "/players",
+                    {
+                        "search": search_name,
+                        "season": season,
+                        "league": league_id
+                    },
+                    3600
+                )
 
-            if not players:
+                players = data.get(
+                    "response",
+                    []
+                )
+
+                if not players:
+                    continue
+
+                # Primeiro tenta encontrar o nome exato
+                for item in players:
+
+                    player = (
+                        item.get("player")
+                        or {}
+                    )
+
+                    player_name = normalize_name(
+                        player.get("name", "")
+                    )
+
+                    if player_name == wanted:
+                        return item
+
+                # Se não encontrou exatamente,
+                # procura correspondência parcial.
+                for item in players:
+
+                    player = (
+                        item.get("player")
+                        or {}
+                    )
+
+                    player_name = normalize_name(
+                        player.get("name", "")
+                    )
+
+                    if (
+                        wanted in player_name
+                        or player_name in wanted
+                    ):
+                        return item
+
+            except HTTPException as e:
+
+                last_error = e
+
+                # Continua procurando em outra
+                # liga ou temporada.
                 continue
-
-            wanted = normalize_name(
-                search_name
-            )
-
-            # Nome exatamente igual
-            for item in players:
-
-                player = (
-                    item.get("player")
-                    or {}
-                )
-
-                player_name = normalize_name(
-                    player.get("name", "")
-                )
-
-                if player_name == wanted:
-                    return item
-
-            # Tenta primeiro resultado
-            return players[0]
-
-        except HTTPException as e:
-
-            last_error = e
-
-            # Se a temporada não estiver
-            # disponível, tenta a anterior.
-            continue
 
     if last_error:
         raise HTTPException(
             404,
-            "Jogador não encontrado nas temporadas "
-            "disponíveis do plano gratuito."
+            "Jogador não encontrado nas principais "
+            "ligas das temporadas disponíveis."
         )
 
     raise HTTPException(
         404,
         "Jogador não encontrado."
     )
-
 
 # ============================================================
 # DESCOBRIR CLUBES ASSOCIADOS AO JOGADOR
