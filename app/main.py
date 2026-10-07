@@ -279,11 +279,7 @@ def find_player(name):
                 continue
 
     if last_error:
-        raise HTTPException(
-            404,
-            "Jogador não encontrado nas principais "
-            "ligas das temporadas disponíveis."
-        )
+        raise last_error
 
     raise HTTPException(
         404,
