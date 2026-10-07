@@ -1073,17 +1073,13 @@ p.get("nationality"),
 
         "signal": signal,
 
-        "method": (
-            "API-Football; jogador 
-localizado "
+                "method": (
+            "API-Football; jogador             localizado "
             "nas temporadas disponíveis; "
             "clube via players/squads; "
-            "histórico recente via fixtures 
-+ "
-            "fixtures/players; chutes por 
-90; "
-            "minutos esperados; fator casa/
-fora; "
+            "histórico recente via fixtures             + "
+            "fixtures/players; chutes por             90; "
+            "minutos esperados; fator casa/.        fora; "
             "distribuição de Poisson."
         )
     }
