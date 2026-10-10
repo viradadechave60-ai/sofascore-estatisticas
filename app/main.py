@@ -1111,3 +1111,41 @@ p.get("nationality"),
             "distribuição de Poisson."
         )
     }
+
+@app.get("/api/diagnostico-apitou")
+def diagnostico_apitou():
+    import re
+
+    try:
+        resposta = requests.get(
+            "https://apitou.com.br/",
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "text/html"
+            },
+            timeout=15
+        )
+
+        html = resposta.text
+
+        scripts = re.findall(
+            r'<script[^>]+src=["\']([^"\']+)',
+            html,
+            re.IGNORECASE
+        )
+
+        return {
+            "status_http": resposta.status_code,
+            "pagina_acessivel": resposta.ok,
+            "tipo_conteudo": resposta.headers.get(
+                "content-type"
+            ),
+            "tamanho_html": len(html),
+            "arquivos_javascript": scripts
+        }
+
+    except requests.RequestException as erro:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Falha ao acessar o APITOU: {erro}"
+        )
