@@ -40,6 +40,24 @@ button{width:100%;padding:15px;background:#38d9a9;color:#06251d;font-size:17px;f
 <input id="odd" type="number" min="1.01" step="0.01" placeholder="Ex.: 1.85">
 
 <button onclick="calcular()">CALCULAR ANÁLISE</button>
+
+<label>Finalizações no jogo mais recente</label>
+<input id="jogo1" type="number" min="0" step="1" placeholder="Ex.: 4">
+
+<label>Finalizações há 2 jogos</label>
+<input id="jogo2" type="number" min="0" step="1" placeholder="Ex.: 2">
+
+<label>Finalizações há 3 jogos</label>
+<input id="jogo3" type="number" min="0" step="1" placeholder="Ex.: 3">
+
+<label>Finalizações há 4 jogos</label>
+<input id="jogo4" type="number" min="0" step="1" placeholder="Ex.: 1">
+
+<label>Finalizações há 5 jogos</label>
+<input id="jogo5" type="number" min="0" step="1" placeholder="Ex.: 5">
+
+<button type="button" onclick="calcularMediaRecente()">CALCULAR MÉDIA DOS 5 JOGOS</button>
+<div id="mediaRecente" class="small"></div>
 </div>
 
 <div class="card" id="resultado" style="display:none">
