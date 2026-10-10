@@ -109,7 +109,14 @@ function calcularMediaRecente(){
 
 function calcular(){
  const nome=document.getElementById('player').value.trim();
- const media=Number(document.getElementById('avg').value);
+ 
+const mediaGeral = Number(document.getElementById('avg').value);
+const camposJogos = ['jogo1','jogo2','jogo3','jogo4','jogo5']
+  .map(id => document.getElementById(id).value);
+const media = camposJogos.every(v => v.trim() !== '' && Number.isFinite(Number(v)) && Number(v) >= 0 && Number.isInteger(Number(v)))
+  ? camposJogos.map(Number).reduce((soma, v) => soma + v, 0) / 5
+  : mediaGeral;
+
  const linha=Number(document.getElementById('line').value);
  const odd=Number(document.getElementById('odd').value);
 
