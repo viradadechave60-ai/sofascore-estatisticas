@@ -1149,3 +1149,52 @@ def diagnostico_apitou():
             status_code=502,
             detail=f"Falha ao acessar o APITOU: {erro}"
         )
+
+@app.get("/api/diagnostico-apitou-js")
+def diagnostico_apitou_js():
+    import re
+
+    resultado = {}
+
+    for arquivo in ("dados.js", "linhas.js"):
+        url = "https://apitou.com.br/" + arquivo
+
+        try:
+            resposta = requests.get(
+                url,
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=15
+            )
+
+            codigo = resposta.text
+
+            links = re.findall(
+                r"""https?://[^\s"'`<>]+|/(?:api|jogador|dados|linhas)[^\s"'`<>]*""",
+                codigo,
+                re.IGNORECASE
+            )
+
+            padrao = (
+                r".{0,70}(?:fetch\(|axios|graphql|"
+                r"jogador|finaliza|estatíst|/api/|\.json)"
+                r".{0,100}"
+            )
+
+            trechos = re.findall(
+                padrao,
+                codigo,
+                re.IGNORECASE
+            )
+
+            resultado[arquivo] = {
+                "status_http": resposta.status_code,
+                "tamanho": len(codigo),
+                "links_encontrados": list(dict.fromkeys(links))[:30],
+                "trechos_relevantes": list(dict.fromkeys(trechos))[:12]
+            }
+
+        except requests.RequestException as erro:
+            resultado[arquivo] = {"erro": str(erro)}
+
+    return resultado
+
