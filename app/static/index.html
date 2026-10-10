@@ -82,6 +82,31 @@ button{width:100%;padding:15px;background:#38d9a9;color:#06251d;font-size:17px;f
 </main>
 
 <script>
+
+function calcularMediaRecente(){
+  const jogos = [
+    'jogo1','jogo2','jogo3','jogo4','jogo5'
+  ].map(id => document.getElementById(id).value);
+
+  if(jogos.some(v => v.trim() === '')){
+    alert('Preencha as finalizações dos 5 jogos.');
+    return;
+  }
+
+  const valores = jogos.map(Number);
+
+  if(valores.some(v => !Number.isFinite(v) || v < 0 || !Number.isInteger(v))){
+    alert('Use números inteiros iguais ou maiores que zero.');
+    return;
+  }
+
+  const media = valores.reduce((soma, v) => soma + v, 0) / 5;
+
+  document.getElementById('mediaRecente').textContent =
+    'Média dos últimos 5 jogos: ' + media.toFixed(2) +
+    ' finalizações por jogo.';
+}
+
 function calcular(){
  const nome=document.getElementById('player').value.trim();
  const media=Number(document.getElementById('avg').value);
